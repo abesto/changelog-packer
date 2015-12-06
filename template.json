@@ -1,0 +1,101 @@
+{
+    "variables": {
+        "atlas_username": "{{env `ATLAS_USERNAME`}}",
+        "atlas_name": "{{env `ATLAS_NAME`}}",
+        "dockerhub_username": "{{env `DOCKERHUB_USERNAME`}}",
+        "dockerhub_password": "{{env `DOCKERHUB_PASSWORD`}}"
+    },
+    "builders": [
+        {
+            "type": "docker",
+            "image": "ubuntu:14.04",
+            "export_path": "docker.tar"
+        },
+        {
+            "type": "virtualbox-iso",
+            "boot_command": [
+                "<esc><esc><enter><wait>",
+                "/install/vmlinuz noapic preseed/url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/preseed.cfg <wait>",
+                "debian-installer=en_US auto locale=en_US kbd-chooser/method=us <wait>",
+                "hostname={{ .Name }} <wait>",
+                "fb=false debconf/frontend=noninteractive <wait>",
+                "keyboard-configuration/modelcode=SKIP keyboard-configuration/layout=USA keyboard-configuration/variant=USA console-setup/ask_detect=false <wait>",
+                "initrd=/install/initrd.gz -- <enter><wait>"
+            ],
+            "boot_wait": "4s",
+            "shutdown_command": "echo 'shutdown -P now' > shutdown.sh; echo 'vagrant'|sudo -S sh 'shutdown.sh'",
+            "guest_os_type": "Ubuntu_64",
+            "headless": false,
+            "http_directory": "http",
+            "iso_url": "http://releases.ubuntu.com/14.04.1/ubuntu-14.04.1-server-amd64.iso",
+            "iso_checksum": "ca2531b8cd79ea5b778ede3a524779b9",
+            "iso_checksum_type": "md5",
+            "ssh_username": "vagrant",
+            "ssh_password": "vagrant",
+            "ssh_port": 22,
+            "ssh_wait_timeout": "10000s",
+            "guest_additions_mode": "disable",
+            "disk_size": "8000",
+            "vboxmanage": [
+                [ "modifyvm", "{{.Name}}", "--memory", "512" ],
+                [ "modifyvm", "{{.Name}}", "--cpus", "1" ]
+            ],
+            "virtualbox_version_file": ".vbox_version"
+        }
+    ],
+    "provisioners": [
+        {
+            "type": "shell",
+            "scripts": [
+                "scripts/base.sh",
+                "scripts/virtualbox.sh",
+                "scripts/vagrant.sh",
+                "scripts/dep.sh",
+                "scripts/setup.sh",
+                "scripts/cleanup.sh",
+                "scripts/zerodisk.sh"
+            ],
+            "override": {
+                "virtualbox-iso": {
+                    "execute_command": "echo 'vagrant'|sudo -S bash '{{.Path}}'"
+                }
+            }
+        }
+    ],
+    "post-processors": [
+        [
+            {
+                "type": "vagrant",
+                "only": ["virtualbox-iso"],
+                "keep_input_artifact": false
+            },
+            {
+                "type": "atlas",
+                "artifact": "{{user `atlas_username`}}/{{user `atlas_name`}}",
+                "artifact_type": "vagrant.box",
+                "metadata": {
+                    "provider": "virtualbox",
+                    "version": "0.0.1"
+                }
+            }
+        ],
+        [
+            {
+                "type": "docker-import",
+                "only": ["docker"],
+                "repository": "abesto/changelog-packer"
+            },
+            {
+                "type": "docker-push",
+                "login": true,
+                "login_username": "{{user `dockerhub_username`}}",
+                "login_password": "{{user `dockerhub_password`}}"
+            },
+            {
+                "type": "atlas",
+                "artifact": "{{user `atlas_username`}}/{{user `atlas_name`}}",
+                "artifact_type": "docker.image"
+            }
+        ]
+    ]
+}
